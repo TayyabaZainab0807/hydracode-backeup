@@ -204,6 +204,10 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             + self.recon_loss_imp * loss_dict["recon_loss"]
         )
         stats["acc"] = loss_dict["acc"]
+        #if not train:
+        #    print(f"Batch - Forecast Out: {forecast_out}, Ground Truth: {y_t}, "f"Forecast Loss: {stats['forecast_loss']}, Class Loss: {stats['class_loss']}, "f"Recon Loss: {stats['recon_loss']}, Total Loss: {stats['loss']}, Accuracy: {stats['acc']}")
+
+        
         return stats
 
     def classification_loss(
@@ -326,7 +330,16 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             patience=3,
             factor=self.decay_factor,
         )
-        return [self.optimizer], [self.scheduler]
+        
+        monitor = 'val/loss'
+   
+        return {
+            "optimizer": self.optimizer,
+            "lr_scheduler": {
+                "scheduler": self.scheduler,
+                "monitor": monitor
+            }
+        }
 
     @classmethod
     def add_cli(self, parser):

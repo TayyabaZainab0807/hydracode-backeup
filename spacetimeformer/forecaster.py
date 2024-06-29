@@ -143,6 +143,7 @@ class Forecaster(pl.LightningModule, ABC):
         x_c: torch.Tensor,
         y_c: torch.Tensor,
         x_t: torch.Tensor,
+        y_t_org: torch.Tensor,
         sample_preds: bool = False,
     ) -> torch.Tensor:
         og_device = y_c.device
@@ -150,25 +151,42 @@ class Forecaster(pl.LightningModule, ABC):
         x_c = x_c.to(self.device).float()
         x_t = x_t.to(self.device).float()
         # move y_c to cpu if it isn't already there, scale, and then move back to the model device
-        y_c = torch.from_numpy(self._scaler(y_c.cpu().numpy())).to(self.device).float()
+        #removed the scaling for input data.
+        y_c = torch.from_numpy((y_c.cpu().numpy())).to(self.device).float()
+        #print("****y_c after")
+        #print(y_c)
         # create dummy y_t of zeros
         y_t = (
             torch.zeros((x_t.shape[0], x_t.shape[1], self.d_yt)).to(self.device).float()
         )
 
+        y_tt = torch.from_numpy((y_t_org.cpu().numpy())).to(self.device).float()
+        #print("****y_tt")
+        #print(y_tt)
+        
         with torch.no_grad():
             # gradient-free prediction
             normalized_preds, *_ = self.forward(
-                x_c, y_c, x_t, y_t, **self.eval_step_forward_kwargs
+                x_c, y_c, x_t, y_t_org, **self.eval_step_forward_kwargs
             )
+        
 
-        # preds --> cpu --> inverse scale to original units --> original device of y_c
         preds = (
             torch.from_numpy(self._inv_scaler(normalized_preds.cpu().numpy()))
             .to(og_device)
             .float()
         )
-        return preds
+        
+
+        lab = (
+            torch.from_numpy(self._inv_scaler(y_t_org.cpu().numpy()))
+            .to(og_device)
+            .float()
+        )
+        
+
+        
+        return preds, lab
 
     @abstractmethod
     def forward_model_pass(
@@ -234,6 +252,7 @@ class Forecaster(pl.LightningModule, ABC):
         return stats
 
     def step(self, batch: Tuple[torch.Tensor], train: bool = False):
+
         kwargs = (
             self.train_step_forward_kwargs if train else self.eval_step_forward_kwargs
         )
@@ -246,7 +265,9 @@ class Forecaster(pl.LightningModule, ABC):
         )
         *_, y_t = batch
         stats = self._compute_stats(output, y_t, mask)
+        
         stats["loss"] = loss
+
         return stats
 
     def training_step(self, batch, batch_idx):
